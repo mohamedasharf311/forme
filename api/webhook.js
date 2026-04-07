@@ -92,17 +92,24 @@ module.exports = async (req, res) => {
         return res.status(200).end();
     }
     
-    // GET request - للاختبار
+    // ==================== GET endpoint للاختبار ====================
     if (req.method === 'GET') {
-        return res.status(200).json({
+        return res.status(200).json({ 
             status: 'active',
-            bot: `${config.personalInfo.name} 🤖`,
-            owner: config.personalInfo.name,
+            bot: 'محمد 🤖',
+            owner: 'محمد',
             instance: {
                 id: instanceConfig.id,
                 name: instanceConfig.name,
                 phone: instanceConfig.phoneNumber
             },
+            endpoints: {
+                webhook: '/api/webhook',
+                send: '/api/send',
+                rules: '/api/rules',
+                stats: '/api/stats'
+            },
+            message: 'البوت شغال بكفاءة! 🚀',
             timestamp: new Date().toISOString()
         });
     }
