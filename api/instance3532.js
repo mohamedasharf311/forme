@@ -3,7 +3,7 @@ const instanceConfig = {
     id: "instance3532",
     token: "yzWzEjmxZpbifuOx6lWafYT3Ng69gaFpJGAdTsVc6N", // استخدم التوكن بتاعك
     name: "محمد - البوت الشخصي",
-    phoneNumber: "201xxxxxxxxx", // ضع رقمك هنا
+    phoneNumber: "201202166862", // ضع رقمك هنا
     active: true,
     description: "بوت خدمة عملاء محمد - أنظمة ذكاء اصطناعي"
 };
