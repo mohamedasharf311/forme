@@ -11,7 +11,6 @@ const instanceConfig = {
 // قائمة بكل الـ instances
 const instances = [
     instanceConfig,
-    // لو عندك instances تانية، ضيفها هنا
 ];
 
 // دوال مساعدة
