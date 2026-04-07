@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محمد - بوت واتساب الذكي</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cairo', 'Tahoma', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .card {
+            background: white;
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header .emoji {
+            font-size: 60px;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        .status.online {
+            background: #10b981;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .status.offline {
+            background: #ef4444;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .content {
+            padding: 30px 25px;
+        }
+
+        .info-box {
+            background: #f3f4f6;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-box h3 {
+            color: #374151;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #111827;
+            font-weight: 600;
+        }
+
+        .endpoint {
+            background: #1f2937;
+            color: #10b981;
+            padding: 12px;
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .feature {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .feature:hover {
+            background: #f3f4f6;
+            transform: scale(1.02);
+        }
+
+        .feature .icon {
+            font-size: 30px;
+            margin-bottom: 8px;
+        }
+
+        .feature p {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .footer {
+            background: #f9fafb;
+            padding: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            .features {
+                grid-template-columns: 1fr;
+            }
+            .info-item {
+                flex-direction: column;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <div class="emoji">🤖</div>
+                <h1>محمد - البوت الذكي</h1>
+                <div class="status online" id="status">
+                    🟢 جاري التحقق...
+                </div>
+            </div>
+
+            <div class="content">
+                <div class="info-box">
+                    <h3>📊 حالة البوت</h3>
+                    <div class="info-item">
+                        <span class="info-label">الاسم:</span>
+                        <span class="info-value" id="botName">محمد</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">الحالة:</span>
+                        <span class="info-value" id="botStatus">...</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">الـ Instance:</span>
+                        <span class="info-value" id="instanceId">instance3532</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">آخر تحديث:</span>
+                        <span class="info-value" id="lastUpdate">...</span>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <h3>🔗 نقاط الـ API</h3>
+                    <div class="endpoint" id="webhookUrl">جاري التحميل...</div>
+                    <a href="#" class="btn btn-secondary" id="testWebhookBtn" target="_blank">
+                        🧪 اختبار Webhook
+                    </a>
+                    <a href="#" class="btn btn-secondary" id="statsBtn" target="_blank">
+                        📊 إحصائيات البوت
+                    </a>
+                    <a href="#" class="btn btn-secondary" id="rulesBtn" target="_blank">
+                        📋 قواعد الردود
+                    </a>
+                </div>
+
+                <div class="features">
+                    <div class="feature">
+                        <div class="icon">💬</div>
+                        <p>ردود تلقائية</p>
+                    </div>
+                    <div class="feature">
+                        <div class="icon">🧠</div>
+                        <p>ذكاء اصطناعي</p>
+                    </div>
+                    <div class="feature">
+                        <div class="icon">⚡</div>
+                        <p>سرعة فائقة</p>
+                    </div>
+                    <div class="feature">
+                        <div class="icon">🔗</div>
+                        <p>تكامل سهل</p>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <h3>📱 كيفية استخدام البوت</h3>
+                    <div class="info-item">
+                        <span class="info-label">📩 أرسل:</span>
+                        <span class="info-value">"قائمة" أو "menu"</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">🔢 اختار:</span>
+                        <span class="info-value">رقم من 1 إلى 10</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">💡 جرب:</span>
+                        <span class="info-value">"عايز بوت" أو "مهتم"</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>🤖 بوت واتساب ذكي - تصميم محمد</p>
+                <p style="margin-top: 5px;">جميع الحقوق محفوظة © 2024</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // جلب رابط الصفحة الحالية
+        const baseUrl = window.location.origin;
+        
+        // تحديث الروابط
+        document.getElementById('webhookUrl').innerText = `${baseUrl}/api/webhook`;
+        document.getElementById('testWebhookBtn').href = `${baseUrl}/api/webhook`;
+        document.getElementById('statsBtn').href = `${baseUrl}/api/stats`;
+        document.getElementById('rulesBtn').href = `${baseUrl}/api/rules`;
+        
+        // جلب حالة البوت
+        async function fetchBotStatus() {
+            try {
+                const response = await fetch(`${baseUrl}/api/webhook`);
+                const data = await response.json();
+                
+                document.getElementById('botStatus').innerHTML = '🟢 يعمل بنجاح';
+                document.getElementById('botName').innerHTML = data.bot || 'محمد';
+                document.getElementById('instanceId').innerHTML = data.instance?.id || 'instance3532';
+                document.getElementById('lastUpdate').innerHTML = new Date(data.timestamp).toLocaleString('ar-EG');
+                document.getElementById('status').innerHTML = '🟢 البوت شغال';
+                document.getElementById('status').className = 'status online';
+                
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                document.getElementById('botStatus').innerHTML = '🔴 غير متاح';
+                document.getElementById('status').innerHTML = '🔴 البوت متوقف';
+                document.getElementById('status').className = 'status offline';
+            }
+        }
+        
+        // تحديث كل ثانية
+        fetchBotStatus();
+        setInterval(fetchBotStatus, 5000);
+    </script>
+</body>
+</html>
