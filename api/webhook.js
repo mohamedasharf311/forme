@@ -2,7 +2,15 @@
 const axios = require('axios');
 const config = require('./config');
 const { getActiveInstance } = require('./instance3532');
-const firebase = require('./firebase');
+
+// محاولة Firebase اختيارياً (إذا كان موجوداً)
+let firebase = null;
+try {
+    firebase = require('./firebase');
+    console.log('✅ Firebase module loaded');
+} catch (e) {
+    console.log('⚠️ Firebase module not available, continuing without it');
+}
 
 // دالة تحويل الأرقام العربية إلى إنجليزية
 function convertArabicNumbers(text) {
@@ -19,28 +27,40 @@ function convertArabicNumbers(text) {
     return converted;
 }
 
-// دالة تنظيف رقم الهاتف
+// دالة تنظيف رقم الهاتف - مع دعم LID
 function cleanPhoneNumber(phone) {
     let cleanPhone = phone.toString();
+    
+    // إذا كان LID، لا يمكن الرد عليه
+    if (cleanPhone.includes('@lid')) {
+        console.log(`⚠️ This is a LID, not a real phone number: ${cleanPhone}`);
+        return null;
+    }
+    
     cleanPhone = cleanPhone.replace('@c.us', '');
-    cleanPhone = cleanPhone.replace('@lid', '');
     cleanPhone = cleanPhone.replace('+', '');
     cleanPhone = cleanPhone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+    
+    // التحقق من أن الرقم حقيقي (10-15 رقم)
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+        console.log(`⚠️ Invalid phone number length: ${cleanPhone.length}`);
+        return null;
+    }
+    
     return cleanPhone;
 }
 
-// دالة البحث عن رد تلقائي من config.js
+// دالة البحث عن رد تلقائي
 function findAutoReply(message) {
     if (!message) return null;
     
-    // تحويل الأرقام العربية إلى إنجليزية للمعالجة
     let processedMessage = convertArabicNumbers(message.toLowerCase().trim());
     let originalMessage = message.trim();
     
     console.log(`🔍 Searching for reply to: "${originalMessage}" (processed: "${processedMessage}")`);
     
-    // 1. التحقق من كلمات القائمة (من config.js)
+    // 1. التحقق من كلمات القائمة
     for (let keyword of config.menuKeywords) {
         if (processedMessage.includes(keyword.toLowerCase()) || 
             originalMessage.toLowerCase().includes(keyword.toLowerCase())) {
@@ -49,22 +69,20 @@ function findAutoReply(message) {
         }
     }
     
-    // 2. التحقق من الأرقام (1-10 بالعربية أو الإنجليزية)
+    // 2. التحقق من الأرقام
     const numberMap = {
         '1': '1', '2': '2', '3': '3', '4': '4', '5': '5',
         '6': '6', '7': '7', '8': '8', '9': '9', '10': '10'
     };
     
-    // تجربة الرقم المعالج (بعد تحويل العربي لإنجليزي)
     if (numberMap[processedMessage]) {
         const reply = config.replies[numberMap[processedMessage]];
         if (reply) {
-            console.log(`✅ Number matched: ${processedMessage} -> ${numberMap[processedMessage]}`);
+            console.log(`✅ Number matched: ${processedMessage}`);
             return reply;
         }
     }
     
-    // تجربة الرقم الأصلي (قد يكون عربي أو إنجليزي)
     if (numberMap[originalMessage]) {
         const reply = config.replies[numberMap[originalMessage]];
         if (reply) {
@@ -73,7 +91,7 @@ function findAutoReply(message) {
         }
     }
     
-    // 3. التحقق من الردود الذكية (من config.js)
+    // 3. التحقق من الردود الذكية
     for (let [keyword, reply] of Object.entries(config.smartReplies)) {
         if (processedMessage.includes(keyword.toLowerCase())) {
             console.log(`✅ Smart reply matched: ${keyword}`);
@@ -81,198 +99,122 @@ function findAutoReply(message) {
         }
     }
     
-    // 4. إذا كان الرقم غير موجود في الردود
-    if (processedMessage.match(/^[0-9]+$/) || originalMessage.match(/^[0-9]+$/)) {
-        console.log(`⚠️ Number not found: ${originalMessage}`);
-        return `❌ الرقم ${originalMessage} مش موجود.\n\n${config.fallbackReply}`;
-    }
-    
-    // 5. رد الفل باك من config.js
-    console.log(`⚠️ No match found, using fallback reply`);
+    // 4. رد الفل باك
     return config.fallbackReply;
+}
+
+// دالة إرسال رسالة واتساب
+async function sendWhatsAppMessage(instance, chatId, message) {
+    try {
+        console.log(`📤 Sending to: ${chatId}`);
+        console.log(`📤 Message: ${message.substring(0, 100)}...`);
+        
+        const response = await axios.post(
+            `https://api.wapilot.net/api/v2/${instance.id}/send-message`,
+            { chat_id: chatId, text: message },
+            { headers: { "token": instance.token, "Content-Type": "application/json" } }
+        );
+        
+        console.log(`✅ Sent successfully`);
+        return { success: true };
+    } catch (error) {
+        console.error(`❌ Send failed:`, error.response?.data || error.message);
+        return { success: false, error: error.response?.data || error.message };
+    }
 }
 
 // ==================== WEBHOOK HANDLER ====================
 module.exports = async (req, res) => {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    // OPTIONS request
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
     
-    // GET request للاختبار
     if (req.method === 'GET') {
         return res.status(200).json({
             status: 'active',
             bot: config.personalInfo.name,
-            botPhone: config.personalInfo.phone,
-            message: 'Webhook is working!',
+            message: 'Webhook is working! Send a POST with a message to test.',
             timestamp: new Date().toISOString()
         });
     }
     
-    // POST request - معالجة الرسائل
     console.log('='.repeat(50));
     console.log(`📩 Webhook received at: ${new Date().toISOString()}`);
-    console.log(`📩 Body:`, JSON.stringify(req.body, null, 2));
     
-    // استخراج البيانات من webhook
     const data = req.body;
     let rawChatId = null;
     let message = null;
     let isFromMe = false;
     
-    // تنسيق وابيلوت
+    // استخراج البيانات
     if (data.payload) {
         rawChatId = data.payload.from;
         message = data.payload.body;
         isFromMe = data.payload.fromMe || false;
-    }
-    // تنسيقات أخرى
-    else if (data.from) {
+    } else if (data.from) {
         rawChatId = data.from;
         message = data.body || data.text;
         isFromMe = data.fromMe || false;
-    }
-    else if (data.phone) {
+    } else if (data.phone) {
         rawChatId = data.phone;
         message = data.message;
     }
     
-    // التحقق من وجود البيانات
     if (!rawChatId || !message) {
         console.log('⚠️ Missing chatId or message');
-        return res.status(200).json({ received: true, error: 'Missing chatId or message' });
-    }
-    
-    // تنظيف رقم الهاتف للاستخدام
-    let cleanNumber = cleanPhoneNumber(rawChatId);
-    let chatId = rawChatId;
-    if (!chatId.includes('@')) {
-        chatId = `${cleanNumber}@c.us`;
+        return res.status(200).json({ received: true, error: 'Missing data' });
     }
     
     console.log(`📱 Raw ChatId: ${rawChatId}`);
-    console.log(`📱 Clean Number: ${cleanNumber}`);
-    console.log(`📱 ChatId for sending: ${chatId}`);
     console.log(`💬 Original Message: "${message}"`);
     console.log(`👤 Is from me: ${isFromMe}`);
     
-    // حفظ الرسالة في Firebase (إذا أردت)
-    if (firebase && firebase.saveMessage) {
-        await firebase.saveMessage('instance3532', cleanNumber, message, isFromMe);
+    // التحقق من أن المرسل رقم هاتف حقيقي (ليس LID)
+    const cleanNumber = cleanPhoneNumber(rawChatId);
+    
+    if (!cleanNumber) {
+        // هذا LID أو رقم غير صالح - لا يمكن الرد
+        console.log(`⚠️ Cannot reply to LID or invalid phone number: ${rawChatId}`);
+        console.log(`💡 Only real phone numbers can receive replies. This appears to be a WhatsApp LID.`);
+        return res.status(200).json({ 
+            received: true, 
+            note: "Cannot reply to LID - this is not a real phone number",
+            originalId: rawChatId
+        });
     }
+    
+    const chatId = `${cleanNumber}@c.us`;
+    console.log(`📱 Valid phone number: ${cleanNumber}`);
+    console.log(`📱 ChatId for sending: ${chatId}`);
     
     // الحصول على الإنستانس النشط
     const activeInstance = getActiveInstance();
     if (!activeInstance) {
-        console.log('⚠️ No active instance available');
+        console.log('⚠️ No active instance');
         return res.status(200).json({ error: 'No active instance' });
     }
     
-    console.log(`🤖 Using instance: ${activeInstance.name} (${activeInstance.id})`);
+    console.log(`🤖 Using instance: ${activeInstance.name}`);
     
-    // ==================== معالجة الرسالة ====================
-    
-    // 1. إذا كانت الرسالة من المسؤول - ندخل وضع human
+    // إذا كانت الرسالة من المسؤول
     if (isFromMe) {
-        if (firebase && firebase.saveUserState) {
-            await firebase.saveUserState('instance3532', chatId, "human");
-        }
-        console.log(`👨‍💼 Admin message detected - BOT will not auto-reply`);
+        console.log(`👨‍💼 Admin message detected - no auto-reply`);
         return res.status(200).json({ success: true, mode: "human", admin: true });
     }
     
-    // 2. التحقق من وضع المستخدم (human/bot) من Firebase
-    let currentMode = null;
-    if (firebase && firebase.getUserState) {
-        currentMode = await firebase.getUserState('instance3532', chatId);
-    }
-    console.log(`📊 Current user mode: ${currentMode || "bot"}`);
-    
-    // 3. إذا كان المستخدم في وضع human، لا نرد تلقائياً
-    if (currentMode === "human") {
-        console.log(`🤫 User in HUMAN mode - BOT silent, waiting for admin response`);
-        return res.status(200).json({ success: true, mode: "human", silent: true });
-    }
-    
-    // 4. طلب خدمة العملاء (رقم 10)
-    const processedMsg = convertArabicNumbers(message.toLowerCase().trim());
-    const isCustomerServiceRequest = (
-        message.trim() === '10' || 
-        message.trim() === '١٠' ||
-        processedMsg === '10' ||
-        message.toLowerCase().includes('خدمة العملاء') ||
-        message.toLowerCase().includes('تسيب رسالة') ||
-        message.toLowerCase().includes('support') ||
-        message.toLowerCase().includes('agent') ||
-        message.toLowerCase().includes('human')
-    );
-    
-    if (isCustomerServiceRequest) {
-        if (firebase && firebase.saveUserState) {
-            await firebase.saveUserState('instance3532', chatId, "human");
-        }
-        console.log(`👨‍💼 Customer support requested - switching to HUMAN mode`);
-        
-        const reply = "👤 تم تحويل محادثتك إلى محمد. سيتم الرد عليك يدوياً في أقرب وقت. شكراً لصبرك.";
-        
-        // إرسال الرد
-        try {
-            await axios.post(
-                `https://api.wapilot.net/api/v2/${activeInstance.id}/send-message`,
-                { chat_id: chatId, text: reply },
-                { headers: { "token": activeInstance.token, "Content-Type": "application/json" } }
-            );
-            console.log(`✅ Support reply sent`);
-        } catch (error) {
-            console.error(`❌ Send error:`, error.response?.data || error.message);
-        }
-        
-        return res.status(200).json({ success: true, mode: "human" });
-    }
-    
-    // 5. العودة للقائمة (إلغاء وضع human)
-    const isMenuRequest = message.toLowerCase().includes('menu') || message.includes('قائمة');
-    if (isMenuRequest && currentMode === "human") {
-        if (firebase && firebase.deleteUserState) {
-            await firebase.deleteUserState('instance3532', chatId);
-        }
-        console.log(`🤖 User requested menu - returning to BOT mode`);
-    }
-    
-    // 6. البحث عن رد تلقائي من config.js
+    // البحث عن رد تلقائي
     const autoReply = findAutoReply(message);
     
     if (autoReply) {
-        console.log(`🤖 Auto-reply found, sending...`);
-        console.log(`📝 Reply preview: ${autoReply.substring(0, 100)}...`);
-        
-        // حفظ رد البوت في Firebase
-        if (firebase && firebase.saveMessage) {
-            await firebase.saveMessage('instance3532', cleanNumber, autoReply, true, message);
-        }
-        
-        // إرسال الرد
-        try {
-            const response = await axios.post(
-                `https://api.wapilot.net/api/v2/${activeInstance.id}/send-message`,
-                { chat_id: chatId, text: autoReply },
-                { headers: { "token": activeInstance.token, "Content-Type": "application/json" } }
-            );
-            
-            console.log(`✅ Auto-reply sent successfully`);
-            return res.status(200).json({ success: true, replied: true });
-        } catch (error) {
-            console.error(`❌ Send error:`, error.response?.data || error.message);
-            return res.status(200).json({ success: false, error: error.message });
-        }
+        console.log(`🤖 Sending auto-reply...`);
+        const result = await sendWhatsAppMessage(activeInstance, chatId, autoReply);
+        return res.status(200).json({ success: result.success, replied: true });
     } else {
-        console.log(`⚠️ No auto-reply found for message: "${message}"`);
+        console.log(`⚠️ No auto-reply found`);
         return res.status(200).json({ success: true, replied: false });
     }
 };
