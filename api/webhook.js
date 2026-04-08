@@ -6,12 +6,13 @@ const firebase = require('./firebase');
 
 // دالة تحويل الأرقام العربية إلى إنجليزية
 function convertArabicNumbers(text) {
+    if (!text) return text;
     const arabicNumbers = {
         '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
         '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
     };
     
-    let converted = text;
+    let converted = text.toString();
     for (let [arabic, english] of Object.entries(arabicNumbers)) {
         converted = converted.replace(new RegExp(arabic, 'g'), english);
     }
@@ -29,51 +30,50 @@ function cleanPhoneNumber(phone) {
     return cleanPhone;
 }
 
-// دالة البحث عن رد تلقائي
-function findAutoReply(message, originalMessage) {
+// دالة البحث عن رد تلقائي من config.js
+function findAutoReply(message) {
     if (!message) return null;
     
-    // تحويل الأرقام العربية إلى إنجليزية
+    // تحويل الأرقام العربية إلى إنجليزية للمعالجة
     let processedMessage = convertArabicNumbers(message.toLowerCase().trim());
-    let originalProcessed = originalMessage ? convertArabicNumbers(originalMessage) : processedMessage;
+    let originalMessage = message.trim();
     
-    console.log(`🔍 Original: "${originalMessage}"`);
-    console.log(`🔍 Processed: "${processedMessage}"`);
+    console.log(`🔍 Searching for reply to: "${originalMessage}" (processed: "${processedMessage}")`);
     
-    // 1. التحقق من كلمات القائمة
+    // 1. التحقق من كلمات القائمة (من config.js)
     for (let keyword of config.menuKeywords) {
         if (processedMessage.includes(keyword.toLowerCase()) || 
-            originalProcessed.includes(keyword.toLowerCase())) {
+            originalMessage.toLowerCase().includes(keyword.toLowerCase())) {
             console.log(`✅ Menu keyword matched: ${keyword}`);
             return config.welcomeMessage;
         }
     }
     
-    // 2. التحقق من الأرقام (بعد التحويل)
+    // 2. التحقق من الأرقام (1-10 بالعربية أو الإنجليزية)
     const numberMap = {
         '1': '1', '2': '2', '3': '3', '4': '4', '5': '5',
         '6': '6', '7': '7', '8': '8', '9': '9', '10': '10'
     };
     
-    // تجربة الرقم من الرسالة المعالجة
+    // تجربة الرقم المعالج (بعد تحويل العربي لإنجليزي)
     if (numberMap[processedMessage]) {
         const reply = config.replies[numberMap[processedMessage]];
         if (reply) {
-            console.log(`✅ Number matched: ${processedMessage}`);
+            console.log(`✅ Number matched: ${processedMessage} -> ${numberMap[processedMessage]}`);
             return reply;
         }
     }
     
-    // تجربة الرقم من الرسالة الأصلية (بعد تحويل الأرقام العربية)
-    if (numberMap[originalProcessed]) {
-        const reply = config.replies[numberMap[originalProcessed]];
+    // تجربة الرقم الأصلي (قد يكون عربي أو إنجليزي)
+    if (numberMap[originalMessage]) {
+        const reply = config.replies[numberMap[originalMessage]];
         if (reply) {
-            console.log(`✅ Number matched from original: ${originalProcessed}`);
+            console.log(`✅ Number matched from original: ${originalMessage}`);
             return reply;
         }
     }
     
-    // 3. التحقق من الردود الذكية
+    // 3. التحقق من الردود الذكية (من config.js)
     for (let [keyword, reply] of Object.entries(config.smartReplies)) {
         if (processedMessage.includes(keyword.toLowerCase())) {
             console.log(`✅ Smart reply matched: ${keyword}`);
@@ -81,72 +81,80 @@ function findAutoReply(message, originalMessage) {
         }
     }
     
-    // 4. التحقق من رقم غير موجود
-    if (processedMessage.match(/^[0-9]+$/) || originalProcessed.match(/^[0-9]+$/)) {
-        console.log(`⚠️ Number not found: ${processedMessage}`);
+    // 4. إذا كان الرقم غير موجود في الردود
+    if (processedMessage.match(/^[0-9]+$/) || originalMessage.match(/^[0-9]+$/)) {
+        console.log(`⚠️ Number not found: ${originalMessage}`);
         return `❌ الرقم ${originalMessage} مش موجود.\n\n${config.fallbackReply}`;
     }
     
+    // 5. رد الفل باك من config.js
+    console.log(`⚠️ No match found, using fallback reply`);
     return config.fallbackReply;
 }
 
 // ==================== WEBHOOK HANDLER ====================
 module.exports = async (req, res) => {
+    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
+    // OPTIONS request
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
     
+    // GET request للاختبار
     if (req.method === 'GET') {
-        const stats = await firebase.getMessagesStats('instance3532');
         return res.status(200).json({
             status: 'active',
             bot: config.personalInfo.name,
-            firebase: 'connected',
-            stats: stats,
+            botPhone: config.personalInfo.phone,
+            message: 'Webhook is working!',
             timestamp: new Date().toISOString()
         });
     }
     
+    // POST request - معالجة الرسائل
     console.log('='.repeat(50));
     console.log(`📩 Webhook received at: ${new Date().toISOString()}`);
     console.log(`📩 Body:`, JSON.stringify(req.body, null, 2));
     
+    // استخراج البيانات من webhook
     const data = req.body;
     let rawChatId = null;
     let message = null;
     let isFromMe = false;
     
-    // استخراج البيانات من مختلف التنسيقات
+    // تنسيق وابيلوت
     if (data.payload) {
         rawChatId = data.payload.from;
         message = data.payload.body;
         isFromMe = data.payload.fromMe || false;
-    } else if (data.from) {
+    }
+    // تنسيقات أخرى
+    else if (data.from) {
         rawChatId = data.from;
         message = data.body || data.text;
         isFromMe = data.fromMe || false;
-    } else if (data.phone) {
+    }
+    else if (data.phone) {
         rawChatId = data.phone;
         message = data.message;
     }
     
+    // التحقق من وجود البيانات
     if (!rawChatId || !message) {
         console.log('⚠️ Missing chatId or message');
-        return res.status(200).json({ received: true, error: 'Missing data' });
+        return res.status(200).json({ received: true, error: 'Missing chatId or message' });
     }
     
-    // تنظيف chatId
+    // تنظيف رقم الهاتف للاستخدام
+    let cleanNumber = cleanPhoneNumber(rawChatId);
     let chatId = rawChatId;
     if (!chatId.includes('@')) {
-        chatId = `${chatId}@c.us`;
+        chatId = `${cleanNumber}@c.us`;
     }
-    
-    // تنظيف رقم الهاتف
-    let cleanNumber = cleanPhoneNumber(rawChatId);
     
     console.log(`📱 Raw ChatId: ${rawChatId}`);
     console.log(`📱 Clean Number: ${cleanNumber}`);
@@ -154,40 +162,50 @@ module.exports = async (req, res) => {
     console.log(`💬 Original Message: "${message}"`);
     console.log(`👤 Is from me: ${isFromMe}`);
     
-    // حفظ الرسالة في Firebase
-    await firebase.saveMessage('instance3532', cleanNumber, message, isFromMe);
+    // حفظ الرسالة في Firebase (إذا أردت)
+    if (firebase && firebase.saveMessage) {
+        await firebase.saveMessage('instance3532', cleanNumber, message, isFromMe);
+    }
     
     // الحصول على الإنستانس النشط
     const activeInstance = getActiveInstance();
     if (!activeInstance) {
-        console.log('⚠️ No active instance');
+        console.log('⚠️ No active instance available');
         return res.status(200).json({ error: 'No active instance' });
     }
     
     console.log(`🤖 Using instance: ${activeInstance.name} (${activeInstance.id})`);
     
-    // لو الرسالة من المسؤول - ندخل وضع human
+    // ==================== معالجة الرسالة ====================
+    
+    // 1. إذا كانت الرسالة من المسؤول - ندخل وضع human
     if (isFromMe) {
-        await firebase.saveUserState('instance3532', chatId, "human");
-        console.log(`👨‍💼 Admin mode activated for 30 minutes`);
+        if (firebase && firebase.saveUserState) {
+            await firebase.saveUserState('instance3532', chatId, "human");
+        }
+        console.log(`👨‍💼 Admin message detected - BOT will not auto-reply`);
         return res.status(200).json({ success: true, mode: "human", admin: true });
     }
     
-    // التحقق من وضع المستخدم
-    let currentMode = await firebase.getUserState('instance3532', chatId);
-    console.log(`📊 Current mode: ${currentMode || "bot"}`);
+    // 2. التحقق من وضع المستخدم (human/bot) من Firebase
+    let currentMode = null;
+    if (firebase && firebase.getUserState) {
+        currentMode = await firebase.getUserState('instance3532', chatId);
+    }
+    console.log(`📊 Current user mode: ${currentMode || "bot"}`);
     
+    // 3. إذا كان المستخدم في وضع human، لا نرد تلقائياً
     if (currentMode === "human") {
-        console.log(`🤫 Human mode active, bot silent (waiting for admin response)`);
+        console.log(`🤫 User in HUMAN mode - BOT silent, waiting for admin response`);
         return res.status(200).json({ success: true, mode: "human", silent: true });
     }
     
-    // طلب خدمة العملاء (رقم 10)
-    const processedMsgForSupport = convertArabicNumbers(message.toLowerCase());
+    // 4. طلب خدمة العملاء (رقم 10)
+    const processedMsg = convertArabicNumbers(message.toLowerCase().trim());
     const isCustomerServiceRequest = (
         message.trim() === '10' || 
         message.trim() === '١٠' ||
-        processedMsgForSupport === '10' ||
+        processedMsg === '10' ||
         message.toLowerCase().includes('خدمة العملاء') ||
         message.toLowerCase().includes('تسيب رسالة') ||
         message.toLowerCase().includes('support') ||
@@ -196,12 +214,14 @@ module.exports = async (req, res) => {
     );
     
     if (isCustomerServiceRequest) {
-        await firebase.saveUserState('instance3532', chatId, "human");
-        console.log(`👨‍💼 Customer support requested - switching to human mode`);
+        if (firebase && firebase.saveUserState) {
+            await firebase.saveUserState('instance3532', chatId, "human");
+        }
+        console.log(`👨‍💼 Customer support requested - switching to HUMAN mode`);
         
         const reply = "👤 تم تحويل محادثتك إلى محمد. سيتم الرد عليك يدوياً في أقرب وقت. شكراً لصبرك.";
-        await firebase.saveMessage('instance3532', cleanNumber, reply, true, message);
         
+        // إرسال الرد
         try {
             await axios.post(
                 `https://api.wapilot.net/api/v2/${activeInstance.id}/send-message`,
@@ -216,26 +236,28 @@ module.exports = async (req, res) => {
         return res.status(200).json({ success: true, mode: "human" });
     }
     
-    // العودة للقائمة
-    const isMenuRequest = message.toLowerCase().includes('menu') || 
-                          message.includes('قائمة') ||
-                          convertArabicNumbers(message).toLowerCase().includes('menu');
-    
+    // 5. العودة للقائمة (إلغاء وضع human)
+    const isMenuRequest = message.toLowerCase().includes('menu') || message.includes('قائمة');
     if (isMenuRequest && currentMode === "human") {
-        await firebase.deleteUserState('instance3532', chatId);
-        console.log(`🤖 User returned to BOT mode`);
+        if (firebase && firebase.deleteUserState) {
+            await firebase.deleteUserState('instance3532', chatId);
+        }
+        console.log(`🤖 User requested menu - returning to BOT mode`);
     }
     
-    // البحث عن رد تلقائي
-    const autoReply = findAutoReply(message, message);
+    // 6. البحث عن رد تلقائي من config.js
+    const autoReply = findAutoReply(message);
     
     if (autoReply) {
         console.log(`🤖 Auto-reply found, sending...`);
         console.log(`📝 Reply preview: ${autoReply.substring(0, 100)}...`);
         
         // حفظ رد البوت في Firebase
-        await firebase.saveMessage('instance3532', cleanNumber, autoReply, true, message);
+        if (firebase && firebase.saveMessage) {
+            await firebase.saveMessage('instance3532', cleanNumber, autoReply, true, message);
+        }
         
+        // إرسال الرد
         try {
             const response = await axios.post(
                 `https://api.wapilot.net/api/v2/${activeInstance.id}/send-message`,
