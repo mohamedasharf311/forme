@@ -1,17 +1,7 @@
 // api/auto-reply.js
 const axios = require('axios');
 const config = require('./config');
-
-// ==================== INSTANCE CONFIGURATION ====================
-const instances = [
-    {
-        id: "instance3532",
-        token: "yzWzEjmxZpbifuOx6lWafYT3Ng69gaFpJGAdTsVc6N",
-        name: "محمد - البوت الشخصي",
-        phoneNumber: "20119383101",
-        active: true
-    }
-];
+const { getActiveInstance } = require('./instance3532');
 
 // دالة تحويل الأرقام العربية إلى إنجليزية
 function convertArabicNumbers(text) {
@@ -26,22 +16,6 @@ function convertArabicNumbers(text) {
         converted = converted.replace(new RegExp(arabic, 'g'), english);
     }
     return converted;
-}
-
-// دالة تنظيف رقم الهاتف
-function cleanPhoneNumber(phone) {
-    let cleanPhone = phone.toString();
-    cleanPhone = cleanPhone.replace('@c.us', '');
-    cleanPhone = cleanPhone.replace('@lid', '');
-    cleanPhone = cleanPhone.replace('+', '');
-    cleanPhone = cleanPhone.replace(/[^0-9]/g, '');
-    if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
-    return cleanPhone;
-}
-
-// دالة الحصول على الإنستانس النشط
-function getActiveInstance() {
-    return instances.find(inst => inst.active === true) || instances[0];
 }
 
 // دالة البحث عن رد تلقائي
@@ -94,23 +68,20 @@ function getAutoReply(message) {
     return config.fallbackReply;
 }
 
-// دالة إرسال رسالة واتساب
-async function sendWhatsAppMessage(phone, message) {
+// دالة إرسال رسالة واتساب - تستخدم نفس chatId الأصلي
+async function sendWhatsAppMessage(chatId, message) {
     try {
         const activeInstance = getActiveInstance();
         if (!activeInstance) {
             return { success: false, error: 'No active instance' };
         }
         
-        let cleanPhone = cleanPhoneNumber(phone);
-        const chat_id = `${cleanPhone}@c.us`;
-        
-        console.log(`📤 Sending to: ${chat_id}`);
+        console.log(`📤 Sending to: ${chatId}`);
         console.log(`📤 Message: ${message.substring(0, 100)}...`);
         
         const response = await axios.post(
             `https://api.wapilot.net/api/v2/${activeInstance.id}/send-message`,
-            { chat_id, text: message },
+            { chat_id: chatId, text: message },
             { headers: { "token": activeInstance.token, "Content-Type": "application/json" } }
         );
         
@@ -123,28 +94,21 @@ async function sendWhatsAppMessage(phone, message) {
 }
 
 // الدالة الرئيسية لمعالجة الرسائل الواردة
-async function processIncomingMessage(phone, message) {
-    console.log(`📩 Incoming message from ${phone}: ${message}`);
+async function processIncomingMessage(chatId, message, isFromMe = false) {
+    console.log(`📩 Incoming message from ${chatId}: ${message}`);
     
-    // تنظيف رقم الهاتف
-    let cleanPhone = cleanPhoneNumber(phone);
-    
-    // التحقق من أن الرقم صالح (ليس LID)
-    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
-        console.log(`⚠️ Invalid phone number (likely a LID): ${phone}`);
-        return { 
-            replied: false, 
-            message: null, 
-            error: 'Cannot reply to LID - not a real phone number' 
-        };
+    // إذا كانت الرسالة من المسؤول لا نرد
+    if (isFromMe) {
+        console.log(`👨‍💼 Admin message, skipping auto-reply`);
+        return { replied: false, message: null, note: "Admin message" };
     }
     
     // الحصول على الرد التلقائي
     const autoReply = getAutoReply(message);
     
     if (autoReply) {
-        console.log(`🤖 Auto-reply found, sending...`);
-        const result = await sendWhatsAppMessage(cleanPhone, autoReply);
+        console.log(`🤖 Auto-reply found, sending to ${chatId}...`);
+        const result = await sendWhatsAppMessage(chatId, autoReply);
         return { 
             replied: result.success, 
             message: autoReply,
@@ -167,14 +131,9 @@ function getAllRules() {
     }));
 }
 
-function addRule(keywords, reply, active = true) {
-    // إضافة قاعدة جديدة (يمكن تطويرها لاحقاً)
-    console.log(`New rule added: ${keywords} -> ${reply.substring(0, 50)}...`);
-    return { id: Date.now(), keywords: keywords.split(','), reply, active };
-}
-
 function getInstances() {
-    return instances;
+    const { getActiveInstance } = require('./instance3532');
+    return [{ id: getActiveInstance()?.id, name: getActiveInstance()?.name }];
 }
 
 function getCompanyData() {
@@ -190,7 +149,6 @@ module.exports = {
     getAutoReply,
     sendWhatsAppMessage,
     getAllRules,
-    addRule,
     getInstances,
     getCompanyData
 };
